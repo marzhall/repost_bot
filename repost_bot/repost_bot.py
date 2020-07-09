@@ -22,6 +22,8 @@ import string
 from time import time, sleep
 from random import choice
 from pprint import pprint
+from PIL import Image
+import imagehash
 
 # Libs
 import requests
@@ -204,20 +206,22 @@ class repost_bot:
         
         return image['file_path'], image['file_id']
 
-    def save_image_from_path(self, chat_id, file_path, file_id):
+    def image_has_been_posted_before(self, chat_id, file_path, file_id, posted_image_hashes):
         address = self.url + "{}".format(file_path)
         address = "https://api.telegram.org/file/bot{token}/{file_path}".format(token = self.bot_token, file_path = file_path)
         print("Request getFile in chat_id '{}', with file_id '{}'".format(chat_id, file_path))
         start_time = time()
         print(address)
         response = self.request_url_stream(address)
-        with open("images" + os.sep + "{}.png".format(file_id), "wb") as f:
-            f.write(response.content)
-            f.close()
-        print("Response = {} Time = {}".format(response, time() - start_time))
+        hashish = repr(imagehash.phash(response.content))
+        if (hashish in posted_image_hashes):
+            return (True, posted_image_hashes)
+        else:
+            posted_image_hashes[hashish] = True
+            return (False, posted_image_hashes)
 
     # Main loop for checking messages
-    def chat_management(self):
+    def chat_management(self, posted_image_hashes):
         # Fetch events from chat
         chat = self.get_Updates_return_json()
         id_list = []
@@ -234,9 +238,12 @@ class repost_bot:
                     for image in message[key]['photo']:
                         print(image['file_id'])
                         file_path, file_id = self.get_image_from_chat(image['file_id'])
-                        self.save_image_from_path(message_chat_id, file_path, file_id)
+                        result, posted_image_hashes = image_has_been_posted_before((message_chat_id, file_path, file_id, posted_image_hashes)
+                        if result:
+                                # POOT YELLING FOR REPOSTING LOGIC HEYAH
         # Make sure management list only contains current IDs
         self.management = id_list
+        return posted_image_hashes
 
     # # Table to store successfully authed users
     # def setup(self):
@@ -262,9 +269,15 @@ class repost_bot:
 
 def run(runclass):
     runclass.cache_ids_on_startup()
+    posted_image_hashes = {}
+    with open('stored_hashes.txt') as json_file:
+        # todo : check if the file exists so we don't get an exception first time
+        posted_image_hashes = json.load(json_file)
     while True:
-        runclass.chat_management()
+        posted_image_hashes = runclass.chat_management(posted_image_hashes)
         sleep(1)
+
+    json.dump(open("data.txt"), posted_image_hashes)
 
 def main():
     run(repost_bot())
